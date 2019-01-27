@@ -1,0 +1,575 @@
+---
+title: "Chi sarà l'MVP NBA 2019?"
+subtitle: "Analysis document"
+author: "Roberto Buzzini, Daniele Parimbelli"
+output:
+  html_document:
+     fig.caption: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+
+#{.tabset .tabset-fade}
+
+## Introduzione 
+
+La *National Basketball Association* (NBA) è la principale lega di pallacanestro a livello mondiale, composta da 30 squadre (29 con sede negli USA e una in Canada). La lega è divisa in due *conference* di 15 squadre ciascuna e ogni annata sportiva (stagione) si suddivide in due fasi:
+
+* la stagione regolare (*regular season*), durante la quale ogni squadra disputa 82 partite;
+* i *playoffs*, che assegnano il titolo di campione NBA, a cui accedono soltanto le 8 migliori squadre per ognuna delle due conference, sulla base della classifica della regular season.
+
+
+Al termine di ogni stagione vengono conferiti, in seguito a una votazione condotta tra più di 100 giornalisti, diversi riconoscimenti. Tra questi il più ambito è senza dubbio l'MVP (*Most Valuable Player*), che viene assegnato al miglior giocatore della stagione regolare. Per questo motivo abbiamo deciso di creare un modello che fosse in grado di prevedere, analizzando le statistiche dei singoli giocatori, l'MVP di una determinata annata (nel nostro caso 2018-19). Dal momento che la stagione è ancora in corso di svolgimento, è bene chiarire subito che i risultati ottenuti sono parziali, in quanto si riferiscono alla prima metà delle partite. Il nostro lavoro può quindi essere interpretato come una previsione di chi vincerebbe l'MVP se la stagione fosse finita il 12/1/19.
+
+Nel corso degli anni si sono spese molte parole sui criteri che dovrebbero essere utilizzati nella votazione (ad esempio quanto debbano contare i risultati di squadra o il numero di partite giocate). Uno dei motivi che ci ha spinto a svolgere questa analisi è stato quindi anche quello di analizzare le votazioni passate per stabilire quali siano state le variabili più considerate dai votanti nell'esprimere le loro preferenze. Nello specifico, la votazione si svolge nel modo seguente: ogni votante esprime cinque preferenze ordinate, con posizioni dalla prima alla quinta. I voti come primo classificato valgono 10 punti, quelli come secondo 7, quelli come terzo 5, quelli come quarto 3 e quelli come quinto classificato 1 punto. Il giocatore che ottiene il maggior numero di punti viene eletto MVP della stagione regolare appena conclusa. 
+
+Prima di iniziare è doverosa una premessa: durante l'esposizione di alcuni concetti tecnici abbiamo cercato di utilizzare, dove possibile, un linguaggio semplice, con l'obiettivo di rendere comprensibile l'analisi anche a chi non abbia una conoscenza approfondita dell'argomento trattato. Per questo motivo, alcuni passaggi potrebbero risultare ovvi o banali a chi invece è un appassionato. 
+
+
+## Dati
+
+I dati sono stati scaricati da [Basketball Reference](https://www.basketball-reference.com/), utilizzando il database del sito. Nello specifico, abbiamo imposto determinati parametri alla funzione "*Season finder*", in modo da ottenere come risultato un dataset composto dalle statistiche riferite alle migliori annate individuali da parte dei vari giocatori della lega nel corso degli anni. Come discriminanti da utilizzare affinché un'annata venisse considerata tra le migliori abbiamo considerato i punti segnati per partita, oltre a tre statistiche avanzate (PER, WS/48 e BPM, che verranno definite in seguito); queste ultime sono sicuramente il modo migliore per valutare l'efficienza di un singolo giocatore. Inoltre abbiamo imposto come vincolo che, per essere considerato, un giocatore dovesse aver giocato almeno il 40% delle partite annuali. Infine abbiamo considerato anche giocatori che non rispettassero questi vincoli ma che avessero comunque ricevuto dei voti per il premio di MVP al termine dell'anno.
+
+L'idea iniziale era quella di considerare il 1980-81 come prima annata di riferimento, perché è da quell'anno che l'MVP è votato dai giornalisti (prima veniva eletto dai giocatori); in seguito abbiamo però deciso di iniziare l'analisi a partire dalla stagione successiva (1981-82), dal momento che non tutte le statistiche che volevamo considerare erano disponibili per gli anni precedenti. In totale abbiamo ottenuto 1286 osservazioni (circa 35 per anno), che hanno composto il nostro training set (durante l'analisi alcune di queste osservazioni hanno svolto anche il ruolo di test set, in modo da valutare la precisione dei modelli).
+
+Per le osservazioni della stagione in corso (2018-19), che hanno costituito il nostro test set, abbiamo deciso di utilizzare gli stessi vincoli, però più stringenti, in modo da diminuire il numero dei giocatori per cui prevedere la risposta. Infatti, considerare circa 35 giocatori anche per questa stagione sarebbe stato pressoché inutile, dal momento che sono decisamente di meno i giocatori che alla fine dell'anno ricevono considerazione nella votazione. Alla fine il test set è risultato composto da 22 osservazioni.
+
+**N.B.** Come anticipato, le statistiche per la stagione 2018-19 sono state scaricate il 12/1/19 e quindi non prendono in considerazione le partite giocatesi successivamente. 
+
+Una volta esportato il dataset, abbiamo rinominato le variabili nel modo seguente:
+
+* *Player*: giocatore a cui si riferiscono le statistiche;
+* *Season*: annata a cui si riferiscono le statistiche;
+* *Age*: età del giocatore;
+* *Team*: squadra di appartenenza del giocatore;
+* *Minutes_per_Game*: media minuti (per partita) in cui un giocatore si trova sul terreno di gioco;
+* *Points_per_Game*: media punti segnati a partita;
+* *Rebounds_per_Game*: media rimbalzi a partita;
+* *Assists_per_Game*: media assist a partita;
+* *Steals_per_Game*: media palle recuperate a partita;
+* *Blocks_per_Game*: media stoppate a partita;
+* *Turnovers_per_Game*: media palle parse a partita;
+* *Personal_Fouls_per_Game*: media falli personali a partita;
+* *Field_Goals_Made_per_Game*: media tiri "dal campo" segnati a partita (con "dal campo" si intendono i tiri su azione, quindi non i tiri liberi);
+* *Field_Goals_Attempted_per_Game*: media tiri "dal campo" tentati a partita;
+* *FG_Percentage*: percentuale di realizzazione "dal campo" (rapporto tra tiri segnati e tiri tentati);
+* *eFG_Percentage*: percentuale "effettiva" di realizzazione (è una percentuale "aggiustata", perché tiene conto del maggior valore assegnato al tiro da 3 punti);
+* *Free_Throws_Made_per_Game*: media tiri liberi segnati a partita;
+* *Free_Throws_Attempted_per_Game*: media tiri liberi tentati a partita;
+* *FT_Percentage*: percentuale di realizzazione dei tiri liberi (rapporto tra tiri liberi segnati e tiri liberi tentati);
+* *TS_Percentage*: percentuale "reale" di realizzazione; tiene conto, oltre che del maggior valore assegnato al tiro da 3 punti, anche del minor valore assegnato al tiro libero (1 punto);
+* *PER*: Player Efficiency Rating (statistica avanzata che somma le cose positive effettuate da un giocatore, sottrae quelle negative e restituisce una valutazione per minuto dell'efficienza del giocatore). Il PER è normalizzato in modo che il valore medio sia 15.
+* *WS_per_48_Minutes*: Win Shares per 48 minuti (statistica avanzata che deriva da un'altra, cioè "Win Shares"). Quest'ultima è una statistica che cerca di ripartire i meriti del successo di una squadra tra i giocatori che la compongono: ad esempio, se alla fine dell'anno un giocatore ha 20 Win Shares significa che, grazie alle sue prestazioni, è stato il "responsabile" di 20 vittorie della squadra, cioè che senza di lui la squadra avrebbe vinto 20 partite in meno (ovviamente si tratta di una stima). Win Shares per 48 minuti (WS/48) è una stima del numero di vittorie di squadra a cui ha contribuito un giocatore ogni 48 minuti (la media è circa 0.100) e quindi non "premia" i giocatori che stanno in campo più minuti. 
+* *BPM*: Box Plus/Minus (statistica avanzata che stima i punti per 100 possessi a cui un giocatore ha contribuito); può anche assumere valori negativi. 
+* *MVP_Share* (risposta): variabile con valori compresi tra 0 e 1 che indica come si sono ripartiti i voti alla fine di un determinato anno; è calcolata come il rapporto tra il punteggio ottenuto da un giocatore e il punteggio massimo ottenibile. Un valore di 1 indica che il giocatore ha ottenuto il massimo punteggio disponibile (tutti i votanti lo hanno selezionato come primo classificato), mentre un valore di 0 indica che il giocatore non ha ricevuto voti.
+
+Purtroppo non tutte le variabili che volevamo considerare erano disponibili su Basketball Reference (ad esempio, dal momento che in due annate si sono giocate meno di 82 partite, volevamo una variabile che indicasse la percentuale di partite giocate piuttosto che il totale).
+Alle variabili descritte precedentemente abbiamo quindi aggiunto le seguenti:
+
+* *Decade*: variabile che raggruppa gli anni in base al decennio di appartenenza (le annate a cavallo tra due decenni sono state considerate come appartenenti al decennio della fine della stagione; ad esempio, la stagione 1989-90 è stata considerata all'interno degli anni '90).
+* *Team_Win_Percentage*: percentuale di vittorie della squadra in cui milita/ha militato il giocatore;
+* *Games_Played_Percentage*: percentuale di partite disputate dal giocatore;
+* *Games_Started_Percentage*: percentuale di partite (su quelle giocate) in cui il giocatore è stato titolare;
+* *Player Ranking*: variabile (i cui valori sono stati assegnati da noi) che indica un ordinamento dell'importanza dei giocatori all'interno di una singola squadra. Ad esempio, un valore di 1 significa che il giocatore, in quell'annata, è stato il migliore della sua squadra (o comunque il giocatore di riferimento). Abbiamo ritenuto necessario creare questa variabile per tenere conto del fatto che, a parità di statistiche, venga sempre premiato maggiormente un giocatore che è il simbolo di una squadra, piuttosto che uno che non è neanche il migliore all'interno della sua. 
+* *MVP* (risposta): variabile dicotomica che indica se il giocatore sia stato eletto MVP alla fine dell'anno.
+<br><br>
+
+## Analisi {.tabset .tabset-pills}
+
+Avendo a disposizione due variabili risposta, la nostra idea è stata quella di dividere l'analisi in due parti, con l'obiettivo di:
+
+* calcolare, tramite una classificazione, la probabilità di vittoria del premio per i vari giocatori utilizzando la variabile dicotomica *MVP*;
+* stimare una regressione per ottenere l'intera classifica finale prevista, dal momento che la risposta quantitativa *MVP Share* considera tutti i punteggi ottenuti nelle varie votazioni (al contrario di *MVP*, che etichetta sia il secondo che, ad esempio, il decimo classificato di un particolare anno come "No MVP").
+
+Il software utilizzato per l'analisi è stato RStudio.
+
+La prima cosa che abbiamo fatto è stata rimuovere dal dataset le variabili *Player* e *Team*, per evitare che il modello tenesse conto dei nomi dei giocatori e della squadra di appartenenza. Inoltre, dopo aver osservato le distribuzioni delle diverse variabili, abbiamo deciso di rimuovere anche *Games_Started_Percentage*, dal momento che per più della metà delle osservazioni il valore era 1 (cioè il 100%).
+
+
+### Classificazione
+
+Prima di iniziare a descrivere i modelli statistici utilizzati vengono i grafici interattivi più interessanti tra quelli ottenuti utilizzando *MVP* come variabile risposta. 
+
+```{r,include=FALSE,warning=FALSE,message=FALSE}
+train <- read.csv("https://DanieleParimbelli95.github.io/SLproject/train.csv",header=T,sep=";",dec=".")
+test <- read.csv("https://DanieleParimbelli95.github.io/SLproject/test.csv",header=T,sep=";",dec=".")
+
+n<-nrow(train)
+m<-nrow(test)
+
+train$MVP<-as.factor(train$MVP)
+levels(train$MVP)<-c("No MVP", "MVP")
+
+combi=rbind(train, test)
+
+combi$Player<-as.character(combi$Player)
+combi$MVP<-as.factor(combi$MVP)
+levels(combi$MVP)<-c("No MVP", "MVP")
+combi$Player_Ranking<-as.factor(combi$Player_Ranking)
+
+str(combi)
+
+combi2<-combi[,-c(1,5,8)]  #tolgo Player,Team e Games_Started Percentage
+str(combi2)
+
+
+#CLASSIFICAZIONE
+
+library(plotly)
+attach(train)
+Missed<-Field_Goals_Attempted_per_Game - Field_Goals_Made_per_Game
+```
+
+
+Il primo mette in luce qualcosa che probabilmente risulta ovvia a chi segue l'NBA, ma che potrebbe essere sorprendente per tutti gli altri. Si nota chiaramente, infatti, che coloro che sono stati premiati con l'MVP risultano sopra media anche in due statistiche non certo positive: i tiri sbagliati a partita (differenza tra *Field_Goals_Attempted_per_Game* e *Field_Goals_Made_per_Game*) e le palle perse. La spiegazione è molto semplice: essendo i giocatori di riferimento della propria squadra, gli MVP sono i giocatori che la maggior parte delle volte tentano più tiri degli altri all'interno della partita; è quindi normale che siano quelli che ne sbagliano anche di più (grafico a sinistra). Per quanto riguarda le palle perse (grafico a destra), la motivazione risiede nel fatto che gli MVP toccano molte più volte il pallone rispetto ai compagni di squadra ed è quindi fisiologico che siano i primi della loro squadra anche in questa statistica. Si evince quindi che anche le variabili "negative" potranno risultare utili nel prevedere se un giocatore sia stato eletto MVP al termine della stagione. 
+
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.width=9.5,fig.height=5.5}
+box1<-plot_ly(x=MVP, y = ~Missed, type = "box", color=~MVP, colors=c("skyblue","gold2"), hoverinfo="text",
+              hoverlabel=list(font=list(size=15)),
+              text=~paste("Player:",Player,"<br>Season:",Season,"<br>FG Missed per Game:",Missed),
+              showlegend=F) %>%
+  layout(xaxis=list(tickfont=list(size=15)),yaxis=list(title="FG Missed per Game",tickfont=list(size=13),titlefont=list(size=16)))
+
+
+box2<-plot_ly(x=MVP, y = ~Turnovers_per_Game, type = "box", color=~MVP, colors=c("skyblue","gold2"),hoverinfo="text",
+              hoverlabel=list(font=list(size=15)),
+              text=~paste("Player:",Player,"<br>Season:",Season,"<br>Turnovers per Game:",Turnovers_per_Game),
+              showlegend=F) %>%
+  layout(xaxis=list(tickfont=list(size=15)),yaxis=list(title="Turnovers",
+         tickfont=list(size=13), titlefont=list(size=16)))
+
+
+( sub_box <- subplot(box1, box2,shareY=F,titleY=T) %>%
+    layout(title = "",
+           images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                              xref = "paper",yref = "paper",x = 0.9,y = 0.12,sizex = 0.08,sizey = 0.08)))
+)
+```
+
+<br>
+Il grafico successivo serve invece a far capire perché la True Shooting Percentage (TS%) sia il miglior indicatore statistico per quanto riguarda il fondamentale del tiro. La parte sinistra si riferisce alla Field Goal Percentage (FG%), cioè il rapporto tra i tiri segnati e i tiri sbagliati, dove i tiri considerati sono quelli tentati su azione (non quindi i tiri liberi). Si nota un elevato numero di outlier nel boxplot di sinistra, quello riferito ai non MVP. Ponendo il cursore su queste osservazioni anomale, si nota che si riferiscono tutte a dei centri come DeAndre Jordan o Tyson Chandler, cioè quei giocatori molto alti che giocano vicino a canestro, le cui percentuali di tiro saranno per forza molto elevate (spesso i loro tiri sono schiacciate). La maggior parte di questo tipo di giocatori ha però un difetto: le percentuali molto basse ai tiri liberi. Da qui nasce l'esigenza di utilizzare la TS%, dal momento che quest'ultima considera anche le percentuali ai tiri liberi; infatti, nel grafico di destra il numero di outlier diminuisce considerevolmente. 
+
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.width=9.5,fig.height=5.5}
+box3<-plot_ly(x=MVP, y = ~FG_Percentage, type = "box", color=~MVP, colors=c("skyblue","gold2"), hoverinfo="text",
+              hoverlabel=list(font=list(size=15)),
+              text=~paste("Player:",Player,"<br>Season:",Season,"<br>FG%:",FG_Percentage*100),
+              showlegend=F) %>%
+  layout(xaxis=list(tickfont=list(size=15)),yaxis=list(title="FG%",tickfont=list(size=13),titlefont=list(size=16),range=c(0.36,0.72)))
+
+
+box4<-plot_ly(x=MVP, y = ~TS_Percentage, type = "box", color=~MVP, colors=c("skyblue","gold2"),hoverinfo="text",
+              hoverlabel=list(font=list(size=15)),
+              text=~paste("Player:",Player,"<br>Season:",Season,"<br>TS%:",TS_Percentage*100),
+              showlegend=F) %>%
+  layout(xaxis=list(tickfont=list(size=15)),yaxis=list(title="TS%",tickfont=list(size=13),titlefont=list(size=16),range=c(0.36,0.72)))
+
+
+( sub_box2 <- subplot(box3, box4,shareY=F,titleY=T) %>%
+    layout(title = "", font=list(size=12),
+  images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                     xref = "paper",yref = "paper",x = 0.9,y = 0.15,sizex = 0.08,sizey = 0.08)))
+)
+```
+
+<br>
+Il seguente boxplot è invece animato e permette di comprendere come le statistiche avanzate siano sempre più considerate nella valutazione di un giocatore (il termine "avanzate" fa riferimento a quelle statistiche create *ad hoc* per valutare l'efficienza di un singolo giocatore o il suo contributo al successo della squadra). Il grafico che viene mostrato è riferito al BPM (Box Plus/Minus), ma anche per WS/48 (Win shares per 48 minuti) e PER (Player Efficiency Rating) i risultati sono analoghi. 
+
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.width=9,fig.height=6}
+( box_anim_1<-train %>% 
+    plot_ly(x=MVP,y=~BPM,type="box",color=~MVP,colors=c("skyblue","gold2"),frame=~Decade,hoverinfo="text",
+            hoverlabel=list(font=list(size=15)),
+            text=~paste("Player:",Player,"<br>Season:",Season,"<br>BPM:",BPM),showlegend=F) %>% 
+    animation_opts(frame=2000) %>%
+    animation_slider(currentvalue=list(prefix = "Decade: ", font = list(color="black")),font=list(size=13)) %>%  
+    layout(yaxis=list(zeroline=F,tickfont=list(size=12),titlefont=list(size=18)), xaxis=list(tickfont=list(size=17)),
+           images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                              xref = "paper",yref = "paper",x = 0.9,y = 0.1,sizex = 0.08,sizey = 0.08)))
+)
+```
+
+<br>
+La prima cosa che salta all'occhio è l'estrema rilevanza che questa statistica sembra avere nella classificazione degli MVP. Inoltre si nota come negli ultimi anni questa importanza sembra essere ancora più marcata; probabilmente il motivo risiede nel fatto che un tempo queste statistiche non esistevano (i valori per gli anni precedenti sono stati calcolati in seguito) e quindi, anche volendo, i votanti non avrebbero potuto consultarle prima di esprimere le loro preferenze. 
+
+<br>
+Il passo successivo è stato quello di calcolare le correlazioni tra le variabili numeriche.
+
+* *FG_Percentage* è molto correlata con *eFG_Percentage*; visto che quest'ultima è molto correlata anche con *TS_Percentage* decidiamo di rimuoverla.
+* *Field_Goals_Attempted_per_Game*, *Field_Goals_Made_per_Game* e *Points_per_Game* sono molto correlate tra loro. Per decidere quale variabile lasciare fra queste tre abbiamo deciso di calcolare l'importanza delle variabili e in base a quello fare la nostra scelta. 
+* *Free_Throws_Attempted_per_Game* e *Free_Throws_Made_per_Game* sono molto correlate tra loro. Anche in questo caso, abbiamo deciso di far dipendere la nostra scelta dall'importanza delle due variabili in questione. 
+
+Dopo aver rimosso la variabile risposta quantitativa (*MVP_Share*) abbiamo utilizzato una random forest, calcolando poi l'importanza delle variabili: abbiamo quindi deciso di tenere *Points_per_Game* e *Free_Throws_Made_per_Game*. Inoltre abbiamo deciso di eliminare le variabili *Age*, *Season* e *Steals*, perché la loro importanza risulta negativa.
+
+A questo punto, dopo aver tolto le variabili indicate, abbiamo deciso di provare a ripetere la random forest. Dal momento che ci troviamo in una situazione di estrema "*class imbalance*" (ci sono 37 osservazioni classificate come "MVP" e 1248 come "No MVP"), abbiamo utilizzato un "*down sampling*". Osservando ancora una volta il grafico che si riferisce all'importanza delle variabili, abbiamo constatato che quelle più influenti nella classificazione degli MVP sono *WS_per_48_Minutes* e *PER*, a dimostrare una volta di più l'importanza delle statistiche avanzate. 
+
+
+
+
+```{r,include=FALSE,warning=FALSE,message=FALSE}
+library(caret)
+library(randomForest)
+
+combi_class<-combi2[,-26] #tolgo MVP_Share
+str(combi_class)
+
+levels(combi_class$MVP)<-c("No_MVP", "MVP")
+
+combi_class<-combi_class[,-c(1,3,11,15,16,18,20)]  #tolgo variabili con importanza negativa e variabili correlate
+
+ctrl_class_rf <- trainControl(method = "repeatedcv",
+                     number = 10,
+                     repeats = 20,
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary,
+                     sampling="down")
+
+set.seed(13)
+
+fit_rf_class <- train(MVP ~ .,
+                      combi_class[1:n,],  #tolgo le oss. riferite all'ultima stagione
+                      method = "rf",
+                      trControl=ctrl_class_rf,
+                      tuneGrid=expand.grid(mtry=5),
+                      family="binomial",
+                      preProcess=c("center","scale","YeoJohnson","zv"),  #BoxCox solo eplicative > 0; YJ anche negative e 0
+                      metric = "ROC",
+                      importance=T)
+
+fit_rf_class
+varImp(fit_rf_class,scale=F)
+plot(varImp(fit_rf_class,scale=F))
+
+
+( phat_rf_class=predict(fit_rf_class, newdata=combi_class[(n+1):(n+m),],type="prob")[,2] )
+
+#la random forest senza season è perfetta
+
+#azzero le probabilità di quelli sotto una certa soglia (40%), per considerare solo quelli che hanno veramente una chance
+#così vengono anche esattamente 10 candidati
+phat_rf_class[phat_rf_class<0.4]=0 
+phat_rf_class
+
+( p<-phat_rf_class/(sum(phat_rf_class)) )
+( p<-round(p,3) )
+( p<-100*p )
+
+
+test_class_fin<-cbind(test,p)
+```
+
+Abbiamo poi calcolato le previsioni utilizzando come test set alcune osservazioni riferite agli anni passati e abbiamo provato a ristimare le probabilità per i vari giocatori di essere eletti MVP con l'algoritmo Extreme Gradient Boosting (xgBoost). Queste ultime previsioni però non sono risultate altrettanto soddisfacenti, forse perché, essendo in presenza di una notevolissima class imbalance, sono necessarie molte ripetizioni di cross-validation affinché l'algoritmo possa comprendere a fondo i dati. Ma dato che l'algoritmo xgBoost è molto più oneroso computazionalmente di una random forest, non permette di specificare un numero molto alto di ripetizioni (altrimenti il tempo che impiegherebbe a fornire i risultati sarebbe troppo elevato). Potrebbe quindi darsi che sia questo il motivo per cui, in questo caso, una random forest (che ci ha permesso di effettuare 20 ripetizioni) fornisca risultati migliori di un xgBoost. 
+
+Abbiamo quindi deciso di utilizzare la random forest per prevedere sul test set, chiedendo al software di restituirci le probabilità (in questo caso di essere MVP). l problema, però, è che i valori risultanti non tenevano conto che in questa stagione ci possa essere un solo vincitore (più di un giocatore aveva quindi assegnata una probabilità superiore a 0.5 ed era classificato MVP). Per rimediare abbiamo imposto come vincolo che la somma delle probabilità ottenute dovesse essere 1. Prima però, siccome lo scopo di questa classificazione era quello di calcolare soltanto le probabilità di vittoria (senza interessarsi agli altri classificati) abbiamo deciso di non considerare i giocatori per i quali la probabilità di vittoria fosse inizialmente inferiore al 40%, per tenere conto soltanto di quelli con una reale chance di vincere il premio a fine stagione. Le altre osservazioni del test set saranno comunque utili nella regressione, perché in quel caso l'obiettivo sarà stilare una classifica finale prevista, tenendo quindi conto anche delle distanze tra le varie posizioni.
+
+Le previsioni finali per la classificazione sono riassunte nel seguente grafico a torta, che indica le probabilità di vittoria per i vari giocatori. Il grafico è interattivo, quindi passando col cursore sopra le varie fette si possono leggere le principali statistiche relative ai diversi giocatori (per problemi di spazio, in questo e nei successivi grafici, Giannis Antetokounmpo viene indicato, a differenza degli altri giocatori, con il nome di battesimo).
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.width=9,fig.height=6}
+library(plotly)
+
+test_class_fin$Team_Win_Percentage<-100*test_class_fin$Team_Win_Percentage
+test_class_fin$TS_Percentage<-100*test_class_fin$TS_Percentage
+
+plot_ly(test_class_fin,labels = ~Player, values = ~p, type = 'pie',  textposition = 'inside',
+        textinfo = 'label+percent', insidetextfont = list(color = '#FFFFFF'), textfont=list(size=15),hoverlabel=list(font=list(size=15)),
+        text=~paste("Team Win %:",Team_Win_Percentage,"<br>Points:",Points_per_Game,"<br>Rebounds:",Rebounds_per_Game,"<br>Assists:",Assists_per_Game,"<br>TS%:",TS_Percentage),hoverinfo="text",
+        marker = list(line = list(color = '#FFFFFF', width = 1)))  %>%
+  layout(title= "", xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE), showlegend=F,
+         images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                            xref="paper",yref = "paper", x=0.8,y = 0.98,sizex = 0.08,sizey = 0.08)))
+
+```
+
+I risultati sono piuttosto sensati e a grandi linee coincidono, nell'ordinamento, con le quote delle varie agenzie di scommesse. Abbiamo pertanto deciso di non provare altri algoritmi, anche perché comunque il nostro obiettivo principale rimaneva la regressione, da cui ci attendevamo risultati più precisi (ad esempio, differenze più nette tra le varie posizioni). 
+<br><br>
+
+
+### Regressione
+
+Anche nel caso della regressione, per prima cosa abbiamo effettuato alcuni grafici interattivi (di cui riportiamo solo quelli più interessanti), per iniziare a farci un'idea di quali potessero essere le variabili esplicative più significative per spiegare la risposta *MVP_Share* (cioè il rapporto tra il punteggio ottenuto da un giocatore nella votazione e il punteggio massimo ottenibile).
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.width=9.5,fig.height=6.8}
+library(plotly)
+attach(train)
+
+scatter<-plot_ly(y=MVP_Share,x = Points_per_Game, type="scatter",mode="markers",visible=T,
+                   color=~MVP, colors=c("skyblue","gold2"),marker=list(size=9,line=list(color="black",width=0.5)),
+                   hoverinfo="text", hoverlabel=list(font=list(size=15)),
+                   text=~paste("Player:",Player,"<br>Season:",Season,"<br>Points per Game:",Points_per_Game,"<br> MVP Share:",MVP_Share))  %>%
+    add_markers(y=MVP_Share,x = Games_Played_Percentage, type="scatter",mode="markers",visible=F,
+              color=~MVP, colors=c("skyblue","gold2"),marker=list(size=9,line=list(color="black",width=0.5)),
+              hoverinfo="text", hoverlabel=list(font=list(size=15)),
+              text=~paste("Player:",Player,"<br>Season:", Season,"<br>Games Played %:",Games_Played_Percentage*100,"<br>MVP Share:",MVP_Share))  %>%
+  add_markers(y=MVP_Share,x = Age, type="scatter",mode="markers",visible=F,
+                color=~MVP, colors=c("skyblue","gold2"),marker=list(size=9,line=list(color="black",width=0.5)),
+                hoverinfo="text", hoverlabel=list(font=list(size=15)),
+                text=~paste("Player:",Player,"<br>Season:", Season,"<br>Age:",Age,"<br>MVP Share",MVP_Share)) %>%
+    add_markers(y=MVP_Share,x = Team_Win_Percentage, type="scatter",mode="markers",visible=F,
+                color=~MVP, colors=c("skyblue","gold2"),marker=list(size=9,line=list(color="black",width=0.5)),
+                hoverinfo="text", hoverlabel=list(font=list(size=15)),
+                text=~paste("Player:",Player,"<br>Season:", Season,"<br>Team Win %:",Team_Win_Percentage,"<br>MVP Share:", MVP_Share))
+
+
+( scatter <- scatter %>%
+    layout(title = "",
+  images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                     xref = "paper",yref = "paper",x = 0.1,y = 0.9,sizex = 0.1,sizey = 0.1)),
+  xaxis=list(side="top",tickfont=list(size=12)),yaxis=list(zeroline=F,title="MVP Share",titlefont=list(size=16),tickfont=list(size=12)),
+  legend=list(y=0.91,font=list(size=15),traceorder="reversed"),
+  updatemenus = list(
+    list(type="buttons", direction="left",x=0.8,y=0,font=list(size=15),
+        buttons = list(
+           list(method = "restyle",  
+                args = list("visible",c(T,T,F,F,F,F,F,F)),  
+                label = "Points"),
+           list(method = "restyle",
+                args = list("visible", c(F,F,T,T,F,F,F,F)), 
+                label = "Games Played %"),
+           list(method = "restyle",
+                args = list("visible", c(F,F,F,F,T,T,F,F)), 
+                label = "Age"),
+           list(method = "restyle",
+                args = list("visible", c(F,F,F,F,F,F,T,T)),
+                label = "Team Win %")
+         ))
+  ))
+)
+
+```
+
+<br>
+La prima cosa che salta all'occhio è che sembra esserci una correlazione tra i punti segnati e la risposta; si nota dal grafico che l'unico giocatore ad aver vinto l'MVP segnando meno di 20 punti a partita è stato Steve Nash, per ben due volte (era elevatissimo però il numero dei suoi assist). 
+
+Passando al numero di partite giocate, è evidente come i giocatori che non disputano un numero elevato di partite vangano penalizzati: nessuno infatti è mai stato eletto MVP avendo giocato meno dell'85% delle partite (è sempre doveroso ricordare che non abbiamo considerato nell'analisi gli anni precedenti alla stagione 1981/ù-82).  
+
+Dal grafico riferito all'età arriva invece un'ulteriore conferma che sia una variabile non significativa. D'altra parte, ci sono stati sia MVP di 22 anni (Derrick Rose) che di 35 (Karl Malone). 
+
+Sembra invece essere presente una forte correlazione tra la percentuale di vittorie della squadra e il numero di voti ricevuti: infatti, negli anni da noi considerati, solo Russell Westbrook nel 2017 e Moses Malone nel 1982 hanno vinto il premio di MVP facendo parte di una squadra che ha vinto meno del 60% delle partite disputate. 
+
+<br>
+I seguenti grafici animati permettono di evidenziare due aspetti in cui è cambiata la lega nel corso degli anni. Dal primo si evince infatti che negli ultimi anni le superstar giocano meno minuti rispetto a quelle del passato; questo perché è sempre maggiore l'attenzione rivolta al benessere fisico dei giocatori. 
+
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.width=9.5,fig.height=6.8}
+#ANIMAZIONI
+
+( scatter_anim_1<-train %>% 
+    plot_ly(y=MVP_Share,x=Minutes_Played_per_Game,type="scatter",color=~MVP,colors=c("skyblue","gold2"),frame=~Decade,hoverinfo="text",
+            text=~paste("Player:",Player,"<br>Season:", Season,"<br>Minutes per Game:",Minutes_Played_per_Game),
+            marker=list(size=9,line=list(color="black",width=0.5)),hoverlabel=list(font=list(size=15))) %>% 
+    animation_opts(frame=2000,transition=1000) %>%
+    animation_slider(currentvalue=list(prefix = "Decade: ", font = list(color="black")),font=list(size=13)) %>%  
+    layout(yaxis=list(title="MVP Share",zeroline=F,tickfont=list(size=12),titlefont=list(size=16)),
+           xaxis=list(title="Minutes per Game",titlefont=list(size=16),tickfont=list(size=12)),
+           legend=list(y=0.93,font=list(size=15)),
+           images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                              xref = "paper",yref = "paper",x = 0.07,y = 0.9,sizex = 0.1,sizey = 0.1)))
+)
+
+```
+
+<br>
+Dal secondo si nota invece che sono in via di diminuzione i centri di un tempo, che dominavano in mezzo all'area: infatti, mentre negli anni '80 e '90 circa la metà degli MVP prendeva più di 10 rimbalzi a partita, negli ultimi anni 15 anni addirittura nessun centro è stato eletto MVP. Questo fa capire come la pallacanestro sia cambiata nel corso degli anni e che ormai la maggior parte delle superstar sia costituita soprattutto da giocatori "esterni", che giocano lontano dal canestro.
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.width=9.5,fig.height=6.8}
+( scatter_anim_2<-train %>% 
+    plot_ly(y=MVP_Share,x=Rebounds_per_Game,type="scatter",color=~MVP,colors=c("skyblue","gold2"),frame=~Decade,hoverinfo="text",
+            text=~paste("Player:",Player,"<br>Season:",Season,"<br>Rebounds per Game:",Rebounds_per_Game),
+            marker=list(size=9,line=list(color="black",width=0.5)),hoverlabel=list(font=list(size=15))) %>% 
+    animation_opts(frame=2000,transition=1000) %>%
+    animation_slider(currentvalue=list(prefix = "Decade: ", font = list(color="black")),font=list(size=13)) %>%  
+    layout(yaxis=list(title="MVP Share",zeroline=F,tickfont=list(size=12),titlefont=list(size=16)),
+           xaxis=list(title="Rebounds per Game",titlefont=list(size=16),tickfont=list(size=12)),
+           legend=list(y=0.93,font=list(size=15)),
+           images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                              xref = "paper",yref = "paper",x = 0.9,y = 0.15,sizex = 0.1,sizey = 0.1)))
+)
+```
+
+<br><br>
+Passando all'analisi vera e propria, il procedimento è stato molto simile a quello seguito nel caso della classificazione. Infatti, dopo aver rimosso la variabile risposta qualitativa *MVP*, abbiamo subito utilizzato una random forest per calcolare l'importanza delle variabili e decidere quali di queste, tra quelle molto correlate con altre, mantenere nel modello. Anche in questo caso, nonostante *TS_Percentage* risultasse leggermente meno importante di *eFG_Percentage*, abbiamo comunque deciso di rimuovere quest'ultima, dal momento che era molto correlata anche con *FG_Percentage*. Inoltre, abbiamo deciso di non considerare *Field_Goals_Made_per_Game*, *Field_Goals_Attempted_per_Game* e *Free_Throws_Made_per_Game*. 
+
+Vista la presenza di alcune variabili categoriali (in particolare *Season*, che ha un numero elevatissimo di livelli) abbiamo deciso di procedere con la *one-hot encoding* prima di provare a stimare dei modelli di regressione. Per valutare le diverse prestazioni, abbiamo utilizzato come test set alcune osservazioni del training set, per poi calcolare l'RMSE (*Root Mean Squared Error*) e confrontare i vari modelli. Oltre alla random forest, abbiamo utilizzato anche lasso, ridge e xgBoost. I primi tre algoritmi hanno tutti determinato un RMSE di circa 15, mentre l'xgBoost di circa 10: abbiamo quindi deciso di utilizzare quest'ultimo.
+
+La stima dell'importanza delle variabili del modello finale ha fornito risultati che sembrano molto sensati; nell'ordine, infatti: *PER*, *Team_Win_Percentage*, *BPM*, *WS_per_48_Minutes*, *Games_Played_Percentage*, *Points_per_Games* sono risultate le variabili più utili nella previsione della risposta. Inoltre, ci riteniamo soddisfatti anche perché si è rivelata molto importante la variabile creata da noi che si riferisce all'essere o meno il giocatore principale di una determinata squadra. In questo caso la cosa fondamentale da segnalare è quanto siano considerate dai votanti due variabili che non riguardano le prestazioni individuali dei singoli giocatori: i risultati di squadra e il numero di partite giocate. Ancora una volta invece, le statistiche avanzate (PER, WS/48, BPM) si dimostrano più importanti di quelle "tradizionali" (punti, rimbalzi, assist).
+
+A questo punto abbiamo calcolato le previsioni per la variabile risposta sul test set, ottenendo le previsioni delle percentuali dei punteggi (sul punteggio massimo ottenibile) che saranno ottenuti nella votazione dai singoli giocatori. Per rendere più comprensibile l'analisi abbiamo deciso di trasformare questi valori nelle previsioni dei totali dei punteggi (piuttosto che le percentuali) che saranno ottenuti (per fare questo abbiamo dovuto tener conto che il punteggio massimo ottenibile da un singolo giocatore è di 1010). Per lo stesso ragionamento utilizzato nel caso della classificazione, abbiamo dovuto imporre il vincolo che la somma di tutti i punteggi ottenuti dai giocatori sia 2626. Infine, poiché i punteggi devono essere numeri interi, abbiamo arrotondato i risultati.
+
+<br>
+Il grafico successivo fornisce una prima idea dei risultati ottenuti, con l'idea di mostrare, al momento dell'analisi, le distanze tra i primi cinque classificati previsti.
+
+```{r,include=FALSE,warning=FALSE,message=FALSE}
+library(caret)
+library(randomForest)
+
+combi_reg<-combi2[,-27] #tolgo MVP
+
+combi_reg<-combi_reg[,-c(15,16,18,19)]
+
+
+library(caret)
+dummies <- dummyVars(~., combi_reg[,-22])
+combi.with.dummies <- data.frame(predict(dummies, combi_reg[,-22]))
+#le righe precedenti le abbiamo realizzate consultando la guida al pacchetto caret di Max Kuhn
+#http://topepo.github.io/caret/pre-processing.html#creating-dummy-variables
+combi.with.dummies<-cbind(combi.with.dummies,MVP_Share=combi_reg[,22])
+
+train_reg<-combi.with.dummies[1:n,]
+
+test_reg<-combi.with.dummies[(n+1):(n+m),]  
+
+#xgboost
+
+ctrl_reg_xgb <- trainControl(method = "repeatedcv",
+                     number = 10,
+                     repeats=2)
+
+my_grid_reg_xgb<-expand.grid(nrounds=400, eta=seq(0.02,0.02,by=0.01), max_depth=4, gamma=0,
+                     min_child_weight=4, subsample=0.9, colsample_bytree=0.8)
+
+set.seed(13)
+
+fit_reg_xgb <- train(MVP_Share ~ ., 
+                 train_reg,
+                 method = "xgbTree",
+                 trControl=ctrl_reg_xgb,
+                 metric="RMSE",
+                 preProcess=c("center","scale","YeoJohnson","zv"),
+                 tuneGrid=my_grid_reg_xgb)
+
+
+( yhat_reg_xgb = predict(fit_reg_xgb, newdata=test_reg) )
+( sort(yhat_reg_xgb) )
+
+Pts_Max<-1010
+( Pts_Won<-yhat_reg_xgb*Pts_Max )  #punteggi ottenuti
+
+( Pts_Won<-round(Pts_Won,0))
+
+Pts_Sum<-2626 #somma di tutti i punteggi
+
+( Points_Won<-Pts_Won*Pts_Sum/(sum(Pts_Won)) ) #voti ottenuti normalizzati in modo che la somma sia 2626
+
+( Points_Won<-round(Points_Won,0))
+sum(Points_Won)
+
+test_reg_fin<-cbind(test,Points_Won)
+
+test_reg_fin$Team_Win_Percentage<-100*test_reg_fin$Team_Win_Percentage
+test_reg_fin$Games_Played_Percentage<-100*test_reg_fin$Games_Played_Percentage
+test_reg_fin$FG_Percentage<-100*test_reg_fin$FG_Percentage
+test_reg_fin$FT_Percentage<-100*test_reg_fin$FT_Percentage
+```
+
+
+<style>
+p.caption {
+  font-size: 0.8em;
+}
+</style>
+
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.width=9.1,fig.height=6.5, fig.cap="Immagini prese da ESPN.com"}
+library(plotly)
+
+test_reg_fin$Player = factor(as.character(test_reg_fin$Player), levels=as.character(test_reg_fin$Player)[order(test_reg_fin$Points_Won, decreasing=TRUE)])
+test_reg_fin = test_reg_fin[order(test_reg_fin$Points_Won, decreasing=TRUE), ]
+
+test_reg_fin_facce<-test_reg_fin[1:5,]
+
+
+plot_ly(test_reg_fin_facce, x = ~Points_Won, y = ~Player, type = 'scatter',marker=list(size=15),
+        hoverlabel=list(font=list(size=18)), hoverinfo="x",
+        text=~paste("Previsione punteggio:",Points_Won)) %>%
+  layout(title = "",
+         xaxis = list(side="top",title = "Previsione punteggi ottenuti nella votazione",showticklabels=T,titlefont=list(size=16),tickfont=list(size=12),showgrid=T),
+         yaxis = list(title = "",tickfont=list(size=16),showgrid=T),
+         images = list(list(source =  "http://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/3032977.png&w=350&h=254",
+                            xref="x",yref = "paper", x=455,y = 0.15,sizex = 35,sizey = 35),
+                       list(source =  "http://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/3992.png&w=350&h=254",
+                            xref="x",yref = "paper", x=443,y = 0.35,sizex = 35,sizey = 35),
+                       list(source =  "http://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/3112335.png&w=350&h=254",
+                            xref="x",yref = "paper", x=333,y = 0.55,sizex = 35,sizey = 35),
+                       list(source =  "http://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/6583.png&w=350&h=254",
+                            xref="x",yref = "paper", x=313,y = 0.77,sizex = 35,sizey = 35),
+                       list(source =  "http://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/6450.png&w=350&h=254",
+                            xref="x",yref = "paper", x=210,y = 0.98,sizex = 35,sizey = 35),
+                       list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                              xref = "paper",yref = "paper",x = 0.9,y = 0.9,sizex = 0.08,sizey = 0.08)
+         )
+  )
+```
+
+<br>
+Il grafico a barre seguente fornisce invece un'idea più generale dei risultati, mostrando la top 10 dei giocatori ordinati in base alla previsione del punteggio che otterranno nella votazione (passando con il cursore sopra le varie barre vengono mostrate le principali statistiche dei giocatori).
+
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE,fig.width=9,fig.height=6}
+test_reg_fin_plot<-test_reg_fin[1:10,]
+
+annotations <- list()
+for (i in 1:length(test_reg_fin_plot$Points_Won)) {
+  annotations[[i]] <- list(x = test_reg_fin$Player[[i]],
+                           y = test_reg_fin$Points_Won[[i]],
+                           text = test_reg_fin_plot$Points_Won[[i]],
+                           font=list(size=17),
+                           yanchor='bottom',
+                           showarrow = FALSE)
+}
+
+plot_ly(test_reg_fin_plot, x = ~Player, y = ~Points_Won, type = 'bar', hoverlabel=list(font=list(size=15)),
+        text=~paste("Team Win %:",Team_Win_Percentage,"<br>Points:",Points_per_Game,"<br>Rebounds:",Rebounds_per_Game,"<br>Assists:",Assists_per_Game,"<br>TS%:",TS_Percentage),hoverinfo="text",
+        marker = list(color = c('rgb(255,215,0)','rgb(192,192,192)','rgb(205,127,50)','rgb(158,202,225)','rgb(158,202,225)','rgb(158,202,225)','rgb(158,202,225)','rgb(158,202,225)','rgb(158,202,225)','rgb(158,202,225)'),
+                      line = list(color = c('rgb(210,105,30)','rgb(105,105,105)','rgb(139,69,19)','rgb(8,48,107)','rgb(8,48,107)','rgb(8,48,107)','rgb(8,48,107)','rgb(8,48,107)','rgb(8,48,107)','rgb(8,48,107)'), width = 1.5))) %>%
+  layout(title = "",
+         xaxis = list(title = "",tickfont=list(size=18)),
+         yaxis = list(title = "",showticklabels=F,tickfont=list(size=13),showgrid=F),
+         images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                            xref="paper",yref = "y", x=0.83,y = 470,sizex = 45,sizey = 45)),
+         annotations=annotations)
+```
+
+Quello che salta subito all'occhio è che, come avevamo intuito, utilizzando una variabile risposta più precisa sembra esserci meno equilibrio di quello previsto dalla classificazione: per il momento sembra infatti una corsa a due tra Giannis Antetokounmpo e James Harden. Anthony Davis invece, nonostante stia probabilmente avendo la miglior stagione di tutti dal punto di vista statistico, viene penalizzato dai risultati di squadra.
+
+Per chi fosse interessato ai risultati completi, la seguente tabella indica, assieme alle principali statistiche, i punteggi previsti per ognuno dei giocatori che, secondo la previsione, riceverà dei voti alla fine dell'anno.
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+library(DT)
+
+test_tab<-test_reg_fin[-c(20,21,22),-c(2,3,5,8,9,10,14,15,16,17,18,19,20,21,22,23,24,29,30)]
+
+col_names=c('Age'=2, 'Team Win %' = 3, 'Games Played %' = 4, 'Points' = 5,
+            'Rebounds' =6, 'Assists' = 7, 'TS%' = 8,'WS/48' = 10, 'Points Won (Prediction)' = 12
+)
+
+datatable(test_tab,class="display cell-border compact",rownames=F,colnames=col_names, escape=T,
+          fillContainer=F,options=list(pageLength=10,autowidth=T)
+          )
+```
+<br>
+
+
+## Conclusioni e ringraziamenti
+
+Entrambi i modelli utilizzati prevedono che Giannis Antetokounmpo sarà eletto MVP per la stagione NBA 2018-19; inoltre, dall'analisi è emerso che i fattori più considerati dai giornalisti per assegnare il premio sono:
+
+* le statistiche avanzate (soprattutto recentemente);
+* il rendimento della squadra;
+* il numero di partite giocate.
+
+Prima di concludere, una considerazione: chi segue l'NBA potrebbe essere rimasto sorpreso da alcuni risultati, come ad esempio la nona posizione prevista per Stephen Curry, il quale è però penalizzato dal fatto di essere colui che ha giocato meno partite tra i giocatori presi in esame: se quindi non si dovesse più infortunare fino al termine della stagione, è ragionevole pensare che scalerà varie posizioni. Per lo stesso motivo, se un giocatore (chiunque esso sia) non giocasse le ultime 30 partite, probabilmente non riceverebbe neanche un voto.
+Vale la pena infatti ricordare che, avendo considerato le statistiche di metà stagione, i risultati della nostra analisi sono per forza di cose parziali. 
+
+Infine, è doveroso da parte nostra ringraziare Basketball Reference (https://www.basketball-reference.com), sito senza il quale sarebbe stato impossibile svolgere un lavoro di questo tipo. 
+
+
