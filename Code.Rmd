@@ -1,0 +1,394 @@
+---
+title: "Chi sarà l'MVP NBA 2019?"
+subtitle: "Code"
+author: "Roberto Buzzini, Daniele Parimbelli"
+output: html_document
+---
+
+
+```{r startup, include = FALSE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = T, eval=F, message=F, warning=F, error=F, comment=NA, cache=F, R.options=list(width=220))
+```
+
+
+```{r}
+train <- read.csv("https://DanieleParimbelli95.github.io/SLproject/train.csv",header=T,sep=";",dec=".")
+test <- read.csv("https://DanieleParimbelli95.github.io/SLproject/test.csv",header=T,sep=";",dec=".")
+
+n<-nrow(train)
+m<-nrow(test)
+
+train$MVP<-as.factor(train$MVP)
+levels(train$MVP)<-c("No MVP", "MVP")
+
+combi=rbind(train, test)
+
+combi$Player<-as.character(combi$Player)
+combi$MVP<-as.factor(combi$MVP)
+levels(combi$MVP)<-c("No MVP", "MVP")
+combi$Player_Ranking<-as.factor(combi$Player_Ranking)
+
+combi2<-combi[,-c(1,5,8)]  # rimozione di Player,Team e Games_Started_Percentage
+
+
+# CLASSIFICAZIONE
+
+library(plotly)
+attach(train)
+
+# nuova variabile per il grafico successivo
+Missed<-Field_Goals_Attempted_per_Game - Field_Goals_Made_per_Game
+
+# due grafici che andranno a comporre un subplot
+box1<-plot_ly(x=MVP, y = ~Missed, type = "box", color=~MVP, colors=c("skyblue","gold2"), hoverinfo="text",
+              hoverlabel=list(font=list(size=15)),
+              text=~paste("Player:",Player,"<br>Season:",Season,"<br>FG Missed per Game:",Missed),
+              showlegend=F) %>%
+  layout(xaxis=list(tickfont=list(size=15)),yaxis=list(title="FG Missed per Game",tickfont=list(size=13),titlefont=list(size=16)))
+
+box2<-plot_ly(x=MVP, y = ~Turnovers_per_Game, type = "box", color=~MVP, colors=c("skyblue","gold2"),hoverinfo="text",
+              hoverlabel=list(font=list(size=15)),
+              text=~paste("Player:",Player,"<br>Season:",Season,"<br>Turnovers per Game:",Turnovers_per_Game),
+              showlegend=F) %>%
+  layout(xaxis=list(tickfont=list(size=15)),yaxis=list(title="Turnovers",
+         tickfont=list(size=13), titlefont=list(size=16)))
+
+# subplot
+( sub_box <- subplot(box1, box2,shareY=F,titleY=T) %>%
+    layout(title = "",
+           images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                              xref = "paper",yref = "paper",x = 0.9,y = 0.12,sizex = 0.08,sizey = 0.08)))
+)
+
+# altri due grafici che andranno a comporre un subplot
+box3<-plot_ly(x=MVP, y = ~FG_Percentage, type = "box", color=~MVP, colors=c("skyblue","gold2"), hoverinfo="text",
+              hoverlabel=list(font=list(size=15)),
+              text=~paste("Player:",Player,"<br>Season:",Season,"<br>FG%:",FG_Percentage*100),
+              showlegend=F) %>%
+  layout(xaxis=list(tickfont=list(size=15)),yaxis=list(title="FG%",tickfont=list(size=13),titlefont=list(size=16),range=c(0.36,0.72)))
+
+box4<-plot_ly(x=MVP, y = ~TS_Percentage, type = "box", color=~MVP, colors=c("skyblue","gold2"),hoverinfo="text",
+              hoverlabel=list(font=list(size=15)),
+              text=~paste("Player:",Player,"<br>Season:",Season,"<br>TS%:",TS_Percentage*100),
+              showlegend=F) %>%
+  layout(xaxis=list(tickfont=list(size=15)),yaxis=list(title="TS%",tickfont=list(size=13),titlefont=list(size=16),range=c(0.36,0.72)))
+
+# subplot
+( sub_box2 <- subplot(box3, box4,shareY=F,titleY=T) %>%
+    layout(title = "", font=list(size=12),
+  images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                     xref = "paper",yref = "paper",x = 0.9,y = 0.15,sizex = 0.08,sizey = 0.08)))
+)
+
+# boxplot animato
+( box_anim_1<-train %>% 
+    plot_ly(x=MVP,y=~BPM,type="box",color=~MVP,colors=c("skyblue","gold2"),frame=~Decade,hoverinfo="text",
+            hoverlabel=list(font=list(size=15)),
+            text=~paste("Player:",Player,"<br>Season:",Season,"<br>BPM:",BPM),showlegend=F) %>% 
+    animation_opts(frame=2000) %>%
+    animation_slider(currentvalue=list(prefix = "Decade: ", font = list(color="black")),font=list(size=13)) %>%  
+    layout(yaxis=list(zeroline=F,tickfont=list(size=12),titlefont=list(size=18)), xaxis=list(tickfont=list(size=17)),
+           images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                              xref = "paper",yref = "paper",x = 0.9,y = 0.1,sizex = 0.08,sizey = 0.08)))
+)
+
+library(corrplot)
+var.numeriche<-sapply(combi,is.numeric) 
+var.numeriche<-train[,var.numeriche]
+correlations<-cor(var.numeriche, use="everything")
+corrplot(correlations, method="number", type="lower",  sig.level = 0.01, insig = "blank")
+
+# eFG_Percentage è molto correlata sia con TS_Percentage che con FG_Percentage  --> viene rimossa eFG_Percentage
+
+# Field_Goals_Attempted_per_Game, Field_Goals_Made_per_Game e Points_per_Game sono molto correlate tra loro (sopra il 90%)
+# Free_Throws_Attempted_per_Game e Free_Throws_Made_per_Game sono molto correlate tra loro (sopra il 94%)
+# per decidere quali togliere viene calcolata la loro importanza con la random forest
+
+library(caret)
+library(randomForest)
+
+combi_class<-combi2[,-26] # rimozione della variabile risposta quantitativa MVP_Share
+str(combi_class)
+
+levels(combi_class$MVP)<-c("No_MVP", "MVP")
+
+ctrl_class_rf <- trainControl(method = "repeatedcv",
+                     number = 10,
+                     repeats = 20,
+                     classProbs = TRUE,
+                     summaryFunction = twoClassSummary,
+                     sampling="down")
+
+set.seed(13)
+
+fit_rf_class <- train(MVP ~ .,
+                combi_class[1:1285,],  #rimozione delle osservazioni riferite all'ultima stagione
+                method = "rf",
+                trControl=ctrl_class_rf,
+                tuneGrid=expand.grid(mtry=5),
+                family="binomial",
+                preProcess=c("center","scale","YeoJohnson","zv"),  # trasformazione di Yeo-Johnson perché ci sono variabili che assumono valori negativi o nulli
+                metric = "ROC",
+                importance=T)
+
+plot(varImp(fit_rf_class,scale=F))
+
+# Steals e Age hanno importanza negativa
+# inoltre, viene rimossa anche Season
+
+# si lasciano Points_per_Game (eliminando quindi Field_Goals_Attempted_per_Game, Field_Goals_Made_per_Game) e
+# Free_Throws_Made_per_Game (eliminando quindi Free_Throws_Attempted_per_Game)
+
+combi_class<-combi_class[,-c(1,3,11,15,16,18,20)]  # rimozione variabili con importanza negativa e variabili correlate
+
+set.seed(13)
+
+fit_rf_class <- train(MVP ~ .,
+                      combi_class[1:n,],  # rimozione osservazioni riferite all'ultima stagione
+                      method = "rf",
+                      trControl=ctrl_class_rf,
+                      tuneGrid=expand.grid(mtry=5),
+                      family="binomial",
+                      preProcess=c("center","scale","YeoJohnson","zv"),  
+                      metric = "ROC",
+                      importance=T)
+
+plot(varImp(fit_rf_class,scale=F))
+
+( phat_rf_class=predict(fit_rf_class, newdata=combi_class[(n+1):(n+m),],type="prob")[,2] )
+
+# vengono azzerate le probabilità al di sotto una certa soglia (40%), per considerare solo i giocatori che hanno una reale chance di vittoria
+phat_rf_class[phat_rf_class<0.4]=0 
+
+# le righe seguenti servono a fare in modo che la somma delle probabilità considerate sia 1
+( p<-phat_rf_class/(sum(phat_rf_class)) )
+( p<-round(p,3) )
+( p<-100*p )
+
+test_class_fin<-cbind(test,p)
+test_class_fin$Team_Win_Percentage<-100*test_class_fin$Team_Win_Percentage
+test_class_fin$TS_Percentage<-100*test_class_fin$TS_Percentage
+
+# grafico a torta
+plot_ly(test_class_fin,labels = ~Player, values = ~p, type = 'pie',  textposition = 'inside',
+        textinfo = 'label+percent', insidetextfont = list(color = '#FFFFFF'), textfont=list(size=15),hoverlabel=list(font=list(size=15)),
+        text=~paste("Team Win %:",Team_Win_Percentage,"<br>Points:",Points_per_Game,"<br>Rebounds:",Rebounds_per_Game,"<br>Assists:",Assists_per_Game,"<br>TS%:",TS_Percentage),hoverinfo="text",
+        marker = list(line = list(color = '#FFFFFF', width = 1)))  %>%
+  layout(title= "", xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE), showlegend=F,
+         images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                            xref="paper",yref = "paper", x=0.8,y = 0.98,sizex = 0.08,sizey = 0.08)))
+
+
+# REGRESSIONE
+
+# scatterplot
+scatter<-plot_ly(y=MVP_Share,x = Points_per_Game, type="scatter",mode="markers",visible=T,
+                   color=~MVP, colors=c("skyblue","gold2"),marker=list(size=9,line=list(color="black",width=0.5)),
+                   hoverinfo="text", hoverlabel=list(font=list(size=15)),
+                   text=~paste("Player:",Player,"<br>Season:",Season,"<br>Points per Game:",Points_per_Game,"<br> MVP Share:",MVP_Share))  %>%
+    add_markers(y=MVP_Share,x = Games_Played_Percentage, type="scatter",mode="markers",visible=F,
+              color=~MVP, colors=c("skyblue","gold2"),marker=list(size=9,line=list(color="black",width=0.5)),
+              hoverinfo="text", hoverlabel=list(font=list(size=15)),
+              text=~paste("Player:",Player,"<br>Season:", Season,"<br>Games Played %:",Games_Played_Percentage*100,"<br>MVP Share:",MVP_Share))  %>%
+  add_markers(y=MVP_Share,x = Age, type="scatter",mode="markers",visible=F,
+                color=~MVP, colors=c("skyblue","gold2"),marker=list(size=9,line=list(color="black",width=0.5)),
+                hoverinfo="text", hoverlabel=list(font=list(size=15)),
+                text=~paste("Player:",Player,"<br>Season:", Season,"<br>Age:",Age,"<br>MVP Share",MVP_Share)) %>%
+    add_markers(y=MVP_Share,x = Team_Win_Percentage, type="scatter",mode="markers",visible=F,
+                color=~MVP, colors=c("skyblue","gold2"),marker=list(size=9,line=list(color="black",width=0.5)),
+                hoverinfo="text", hoverlabel=list(font=list(size=15)),
+                text=~paste("Player:",Player,"<br>Season:", Season,"<br>Team Win %:",Team_Win_Percentage,"<br>MVP Share:", MVP_Share))
+
+( scatter <- scatter %>%
+    layout(title = "",
+  images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                     xref = "paper",yref = "paper",x = 0.1,y = 0.9,sizex = 0.1,sizey = 0.1)),
+  xaxis=list(side="top",tickfont=list(size=12)),yaxis=list(zeroline=F,title="MVP Share",titlefont=list(size=16),tickfont=list(size=12)),
+  legend=list(y=0.91,font=list(size=15),traceorder="reversed"),
+  updatemenus = list(
+    list(type="buttons", direction="left",x=0.8,y=0,font=list(size=15),
+        buttons = list(
+           list(method = "restyle",  
+                args = list("visible",c(T,T,F,F,F,F,F,F)),  
+                label = "Points"),
+           list(method = "restyle",
+                args = list("visible", c(F,F,T,T,F,F,F,F)), 
+                label = "Games Played %"),
+           list(method = "restyle",
+                args = list("visible", c(F,F,F,F,T,T,F,F)), 
+                label = "Age"),
+           list(method = "restyle",
+                args = list("visible", c(F,F,F,F,F,F,T,T)),
+                label = "Team Win %")
+         ))
+  ))
+)
+
+# scatterplot animati
+
+( scatter_anim_1<-train %>% 
+    plot_ly(y=MVP_Share,x=Minutes_Played_per_Game,type="scatter",color=~MVP,colors=c("skyblue","gold2"),frame=~Decade,hoverinfo="text",
+            text=~paste("Player:",Player,"<br>Season:", Season,"<br>Minutes per Game:",Minutes_Played_per_Game),
+            marker=list(size=9,line=list(color="black",width=0.5)),hoverlabel=list(font=list(size=15))) %>% 
+    animation_opts(frame=2000,transition=1000) %>%
+    animation_slider(currentvalue=list(prefix = "Decade: ", font = list(color="black")),font=list(size=13)) %>%  
+    layout(yaxis=list(title="MVP Share",zeroline=F,tickfont=list(size=12),titlefont=list(size=16)),
+           xaxis=list(title="Minutes per Game",titlefont=list(size=16),tickfont=list(size=12)),
+           legend=list(y=0.93,font=list(size=15)),
+           images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                              xref = "paper",yref = "paper",x = 0.07,y = 0.9,sizex = 0.1,sizey = 0.1)))
+)
+
+( scatter_anim_2<-train %>% 
+    plot_ly(y=MVP_Share,x=Rebounds_per_Game,type="scatter",color=~MVP,colors=c("skyblue","gold2"),frame=~Decade,hoverinfo="text",
+            text=~paste("Player:",Player,"<br>Season:",Season,"<br>Rebounds per Game:",Rebounds_per_Game),
+            marker=list(size=9,line=list(color="black",width=0.5)),hoverlabel=list(font=list(size=15))) %>% 
+    animation_opts(frame=2000,transition=1000) %>%
+    animation_slider(currentvalue=list(prefix = "Decade: ", font = list(color="black")),font=list(size=13)) %>%  
+    layout(yaxis=list(title="MVP Share",zeroline=F,tickfont=list(size=12),titlefont=list(size=16)),
+           xaxis=list(title="Rebounds per Game",titlefont=list(size=16),tickfont=list(size=12)),
+           legend=list(y=0.93,font=list(size=15)),
+           images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                              xref = "paper",yref = "paper",x = 0.9,y = 0.15,sizex = 0.1,sizey = 0.1)))
+)
+
+combi_reg<-combi2[,-27] # rimozione della variabile risposta qualitativa MVP
+
+ctrl_reg_rf <- trainControl(method = "cv",
+                     number = 10)
+set.seed(13)
+
+fit_rf_reg <- train(MVP_Share ~ .,
+                    combi_reg[1:1285,],
+                    method = "rf",
+                    trControl=ctrl_reg_rf,
+                    tuneGrid=expand.grid(mtry=5),
+                    preProcess=c("center","scale","YeoJohnson","zv"),  
+                    metric = "RMSE",
+                    importance=T)
+
+plot(varImp(fit_rf_reg,scale=F))
+
+# dopo aver visto l'importanza delle variabili e le correlazioni si decide di rimuovere le seguenti variabili, che sono le meno importanti tra quelle molto correlate con altri predittori:
+# eFG_Percentage (più importante di TS_Percentage, però eFG_Percentge è correlata anche con FG_Percentage),
+# Field_Goals_Made_per_Game, Field_Goals_Attempted_per_Game, Free_Throws_Made_per_Game  
+
+combi_reg<-combi_reg[,-c(15,16,18,19)]
+
+# one hot encoding
+library(caret)
+dummies <- dummyVars(~., combi_reg[,-22])
+combi.with.dummies <- data.frame(predict(dummies, combi_reg[,-22]))
+combi.with.dummies<-cbind(combi.with.dummies,MVP_Share=combi_reg[,22])
+
+train_reg<-combi.with.dummies[1:n,]
+test_reg<-combi.with.dummies[(n+1):(n+m),]  
+
+
+# xgboost
+
+ctrl_reg_xgb <- trainControl(method = "repeatedcv",
+                     number = 10,
+                     repeats=2)
+
+# il tuning degli iperparametri ha fornito la seguente griglia
+my_grid_reg_xgb<-expand.grid(nrounds=400, eta=seq(0.02,0.02,by=0.01), max_depth=4, gamma=0,
+                     min_child_weight=4, subsample=0.9, colsample_bytree=0.8)
+
+set.seed(13)
+
+fit_reg_xgb <- train(MVP_Share ~ ., 
+                 train_reg,
+                 method = "xgbTree",
+                 trControl=ctrl_reg_xgb,
+                 metric="RMSE",
+                 preProcess=c("center","scale","YeoJohnson","zv"),
+                 tuneGrid=my_grid_reg_xgb)
+
+plot(varImp(fit_reg_xgb,scale=F))
+
+( yhat_reg_xgb = predict(fit_reg_xgb, newdata=test_reg) ) # previsioni
+
+Pts_Max<-1010  # punteggio massimo ottenibile da un giocatore
+( Pts_Won<-yhat_reg_xgb*Pts_Max )  # previsioni punteggi ottenuti nella votazione
+( Pts_Won<-round(Pts_Won,0))
+
+Pts_Sum<-2626 # valore che deve avere la somma di tutti i punteggi
+( Points_Won<-Pts_Won*Pts_Sum/(sum(Pts_Won)) ) # punteggi normalizzati in modo che la somma sia 2626
+( Points_Won<-round(Points_Won,0))
+
+test_reg_fin<-cbind(test,Points_Won)
+
+# grafici sui risultati della regressione
+test_reg_fin$Team_Win_Percentage<-100*test_reg_fin$Team_Win_Percentage
+test_reg_fin$Games_Played_Percentage<-100*test_reg_fin$Games_Played_Percentage
+test_reg_fin$FG_Percentage<-100*test_reg_fin$FG_Percentage
+test_reg_fin$FT_Percentage<-100*test_reg_fin$FT_Percentage
+test_reg_fin$TS_Percentage<-100*test_reg_fin$TS_Percentage
+
+# le tre seguenti righe servono a fare in modo che nei grafici i giocatori siano ordinati in base al loro punteggio previsto
+test_reg_fin$Player = factor(as.character(test_reg_fin$Player), levels=as.character(test_reg_fin$Player)[order(test_reg_fin$Points_Won, decreasing=TRUE)])
+test_reg_fin = test_reg_fin[order(test_reg_fin$Points_Won, decreasing=TRUE), ]
+
+test_reg_fin_facce<-test_reg_fin[1:5,]
+
+plot_ly(test_reg_fin_facce, x = ~Points_Won, y = ~Player, type = 'scatter',marker=list(size=15),
+        hoverlabel=list(font=list(size=18)), hoverinfo="x",
+        text=~paste("Previsione punteggio:",Points_Won)) %>%
+  layout(title = "",
+         xaxis = list(side="top",title = "Previsione punteggi ottenuti nella votazione",showticklabels=T,titlefont=list(size=16),tickfont=list(size=12),showgrid=T),
+         yaxis = list(title = "",tickfont=list(size=16),showgrid=T),
+         images = list(list(source =  "http://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/3032977.png&w=350&h=254",
+                            xref="x",yref = "paper", x=455,y = 0.15,sizex = 35,sizey = 35),
+                       list(source =  "http://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/3992.png&w=350&h=254",
+                            xref="x",yref = "paper", x=443,y = 0.35,sizex = 35,sizey = 35),
+                       list(source =  "http://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/3112335.png&w=350&h=254",
+                            xref="x",yref = "paper", x=333,y = 0.55,sizex = 35,sizey = 35),
+                       list(source =  "http://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/6583.png&w=350&h=254",
+                            xref="x",yref = "paper", x=313,y = 0.77,sizex = 35,sizey = 35),
+                       list(source =  "http://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/6450.png&w=350&h=254",
+                            xref="x",yref = "paper", x=210,y = 0.98,sizex = 35,sizey = 35),
+                       list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                              xref = "paper",yref = "paper",x = 0.9,y = 0.9,sizex = 0.08,sizey = 0.08)
+         )
+  )
+
+test_reg_fin_plot<-test_reg_fin[1:10,]
+
+# ciclo per mettere i punteggi previsti sopra le barre
+annotations <- list()
+for (i in 1:length(test_reg_fin_plot$Points_Won)) {
+  annotations[[i]] <- list(x = test_reg_fin$Player[[i]],
+                           y = test_reg_fin$Points_Won[[i]],
+                           text = test_reg_fin_plot$Points_Won[[i]],
+                           font=list(size=17),
+                           yanchor='bottom',
+                           showarrow = FALSE)
+}
+
+#bar plot
+plot_ly(test_reg_fin_plot, x = ~Player, y = ~Points_Won, type = 'bar', hoverlabel=list(font=list(size=15)),
+        text=~paste("Team Win %:",Team_Win_Percentage,"<br>Points:",Points_per_Game,"<br>Rebounds:",Rebounds_per_Game,"<br>Assists:",Assists_per_Game,"<br>TS%:",TS_Percentage),hoverinfo="text",
+        marker = list(color = c('rgb(255,215,0)','rgb(192,192,192)','rgb(205,127,50)','rgb(158,202,225)','rgb(158,202,225)','rgb(158,202,225)','rgb(158,202,225)','rgb(158,202,225)','rgb(158,202,225)','rgb(158,202,225)'),
+                      line = list(color = c('rgb(210,105,30)','rgb(105,105,105)','rgb(139,69,19)','rgb(8,48,107)','rgb(8,48,107)','rgb(8,48,107)','rgb(8,48,107)','rgb(8,48,107)','rgb(8,48,107)','rgb(8,48,107)'), width = 1.5))) %>%
+  layout(title = "",
+         xaxis = list(title = "",tickfont=list(size=18)),
+         yaxis = list(title = "",showticklabels=F,tickfont=list(size=13),showgrid=F),
+         images = list(list(source =  "https://viterbicareers.usc.edu/wp-content/uploads/2018/06/NBA-logo.jpg",
+                            xref="paper",yref = "y", x=0.83,y = 470,sizex = 45,sizey = 45)),
+         annotations=annotations)
+
+# tabella sui risultati della regressione
+library(DT)
+test_tab<-test_reg_fin[-c(20,21,22),-c(2,3,5,8,9,10,14,15,16,17,18,19,20,21,22,23,24,29,30)]
+
+col_names=c('Age'=2, 'Team Win %' = 3, 'Games Played %' = 4, 'Points' = 5,
+            'Rebounds' =6, 'Assists' = 7, 'TS%' = 8,'WS/48' = 10, 'Points Won (Prediction)' = 12
+)
+
+datatable(test_tab,class="display cell-border compact",rownames=F,colnames=col_names, escape=T,
+          fillContainer=F,options=list(pageLength=10,autowidth=T)
+          )
+```
+
